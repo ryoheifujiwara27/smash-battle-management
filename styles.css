@@ -475,6 +475,13 @@ input:focus-visible + .result-btn {
   font-weight: 700;
 }
 
+.match__char {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
 .match__char--mine { color: #8ec5ff; }
 
 .match__sep {
@@ -557,6 +564,8 @@ input:focus-visible + .result-btn {
   background: var(--surface);
   border-color: var(--line);
 }
+
+.rank > .ficon { flex: none; }
 
 .rank__body { flex: 1; min-width: 0; }
 
@@ -650,6 +659,256 @@ input:focus-visible + .result-btn {
 
 .toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
 
+/* ---------- キャラアイコン ---------- */
+
+.ficon {
+  position: relative;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .16);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, .35);
+  vertical-align: middle;
+}
+
+.ficon--sm { width: 22px; height: 22px; }
+
+.ficon--all {
+  background: var(--surface-2);
+  border-style: dashed;
+  border-color: var(--line);
+}
+
+.ficon__initial {
+  font-size: 15px;
+  font-weight: 900;
+  color: rgba(0, 0, 0, .62);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .28);
+  line-height: 1;
+  user-select: none;
+}
+
+.ficon--sm .ficon__initial { font-size: 10px; }
+
+.ficon--all .ficon__initial { color: var(--text-dim); text-shadow: none; }
+
+/* 画像が読み込めた場合のみ、下地のアバターに重ねて表示 */
+.ficon__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: inherit;
+}
+
+/* ---------- キャラ選択ボタン ---------- */
+
+.picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+
+.picker-btn:active { background: #262c3e; }
+
+.picker-btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 59, 48, .18);
+}
+
+.picker-btn__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-btn__caret {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-right: 3px;
+  border-right: 2px solid var(--text-dim);
+  border-bottom: 2px solid var(--text-dim);
+  transform: rotate(45deg) translate(-2px, -2px);
+}
+
+.picker-btn--sm {
+  width: auto;
+  max-width: 58vw;
+  padding: 6px 9px;
+  gap: 6px;
+  font-size: 13px;
+  border-radius: 9px;
+}
+
+.picker-btn--sm .picker-btn__caret { width: 6px; height: 6px; }
+
+/* ---------- キャラ選択ダイアログ ---------- */
+
+body.is-locked { overflow: hidden; }
+
+.picker {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.picker[hidden] { display: none; }
+
+.picker__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 6, 12, .72);
+  backdrop-filter: blur(3px);
+}
+
+.picker__sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 640px;
+  max-height: 88vh;
+  padding: 14px 12px calc(14px + var(--safe-b));
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -14px 40px rgba(0, 0, 0, .6);
+  animation: sheet-up .22s ease;
+}
+
+@keyframes sheet-up {
+  from { transform: translateY(24px); opacity: .4; }
+  to { transform: none; opacity: 1; }
+}
+
+.picker__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.picker__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: .03em;
+}
+
+.picker__close {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.picker__search {
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px; /* iOS のズーム防止 */
+  appearance: none;
+}
+
+.picker__search:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 59, 48, .18);
+}
+
+.picker__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
+  gap: 8px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 9px 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, transform .12s;
+}
+
+.tile:active { transform: scale(.96); }
+
+.tile.is-selected {
+  border-color: var(--accent);
+  background: rgba(255, 59, 48, .12);
+  box-shadow: 0 0 0 1px rgba(255, 59, 48, .4);
+}
+
+.tile:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tile__name {
+  width: 100%;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  color: var(--text-dim);
+  overflow-wrap: break-word;
+}
+
+.tile.is-selected .tile__name { color: var(--text); }
+
+.picker__empty {
+  margin: 16px 0 4px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
 /* ---------- 画面サイズ対応 ---------- */
 
 @media (min-width: 560px) {
@@ -657,6 +916,9 @@ input:focus-visible + .result-btn {
   .content { padding: 20px 16px 40px; }
   .card { padding: 18px 18px; }
   .summary__num { font-size: 24px; }
+  .picker__grid { grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); }
+  .picker__sheet { max-height: 82vh; border-radius: 20px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
+  .picker { align-items: center; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -38,17 +38,15 @@
       <h2 class="card__title">対戦を記録</h2>
 
       <div class="field">
-        <label class="field__label" for="myChar">自分のキャラ</label>
-        <div class="select-wrap">
-          <select id="myChar" class="select" required></select>
-        </div>
+        <span class="field__label" id="myCharLabel">自分のキャラ</span>
+        <button type="button" class="picker-btn" id="myChar" data-picker="fighter"
+                aria-labelledby="myCharLabel" aria-haspopup="dialog"></button>
       </div>
 
       <div class="field">
-        <label class="field__label" for="oppChar">相手のキャラ</label>
-        <div class="select-wrap">
-          <select id="oppChar" class="select" required></select>
-        </div>
+        <span class="field__label" id="oppCharLabel">相手のキャラ</span>
+        <button type="button" class="picker-btn" id="oppChar" data-picker="fighter"
+                aria-labelledby="oppCharLabel" aria-haspopup="dialog"></button>
       </div>
 
       <div class="field">
@@ -80,9 +78,8 @@
     <div class="card">
       <div class="card__head">
         <h2 class="card__title">対戦履歴 <span class="badge" id="historyCount">0</span></h2>
-        <div class="select-wrap select-wrap--sm">
-          <select id="historyFilter" class="select select--sm"></select>
-        </div>
+        <button type="button" class="picker-btn picker-btn--sm" id="historyFilter" data-picker="fighter"
+                aria-label="相手キャラで絞り込み" aria-haspopup="dialog"></button>
       </div>
       <ul class="match-list" id="historyList"></ul>
       <p class="empty" id="historyEmpty">まだ対戦記録がありません。<br>「記録」タブから追加してください。</p>
@@ -105,7 +102,7 @@
       <div class="card__head">
         <h2 class="card__title">相手キャラ別 戦績</h2>
         <div class="select-wrap select-wrap--sm">
-          <select id="statsSort" class="select select--sm">
+          <select id="statsSort" class="select select--sm" aria-label="並び替え">
             <option value="rate">勝率順</option>
             <option value="count">対戦数順</option>
             <option value="win">勝利数順</option>
@@ -114,10 +111,9 @@
         </div>
       </div>
       <div class="filter-row">
-        <label class="field__label field__label--inline" for="statsMyChar">自分のキャラで絞り込み</label>
-        <div class="select-wrap select-wrap--sm">
-          <select id="statsMyChar" class="select select--sm"></select>
-        </div>
+        <span class="field__label field__label--inline" id="statsMyCharLabel">自分のキャラで絞り込み</span>
+        <button type="button" class="picker-btn picker-btn--sm" id="statsMyChar" data-picker="fighter"
+                aria-labelledby="statsMyCharLabel" aria-haspopup="dialog"></button>
       </div>
       <ol class="rank-list" id="rankList"></ol>
       <p class="empty" id="statsEmpty">集計できる対戦記録がありません。</p>
@@ -135,6 +131,20 @@
 <footer class="app-footer">
   <p>データはこの端末のブラウザ (localStorage) にのみ保存されます。</p>
 </footer>
+
+<!-- キャラクター選択ダイアログ -->
+<div class="picker" id="picker" hidden>
+  <div class="picker__backdrop" data-close></div>
+  <div class="picker__sheet" role="dialog" aria-modal="true" aria-labelledby="pickerTitle">
+    <div class="picker__head">
+      <h2 class="picker__title" id="pickerTitle">キャラクターを選択</h2>
+      <button type="button" class="picker__close" data-close aria-label="閉じる">×</button>
+    </div>
+    <input type="search" class="picker__search" id="pickerSearch" placeholder="キャラ名・シリーズ名で検索" autocomplete="off">
+    <div class="picker__grid" id="pickerGrid"></div>
+    <p class="picker__empty" id="pickerEmpty" hidden>一致するキャラクターがいません。</p>
+  </div>
+</div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 

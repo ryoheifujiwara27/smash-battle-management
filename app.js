@@ -11,6 +11,15 @@
 
   var battles = [];
   var prefs = { myChar: '', oppChar: '' };
+  /* 選択状態（キャラ名を保持。ALL は「すべて」） */
+  var picks = { myChar: '', oppChar: '', historyFilter: ALL, statsMyChar: ALL };
+
+  /* 画像アイコンが利用可能かどうか。起動時に 1 枚だけ試験読み込みして判定し、
+     失敗した場合はシリーズカラーのフォールバックアバターのみを使用します。 */
+  var iconsAvailable = false;
+
+  var FIGHTER_BY_NAME = {};
+  for (var fi = 0; fi < FIGHTERS.length; fi++) FIGHTER_BY_NAME[FIGHTERS[fi].name] = FIGHTERS[fi];
 
   /* ---------- ストレージ ---------- */
 
@@ -98,26 +107,88 @@
     toastTimer = setTimeout(function () { el.classList.remove('is-visible'); }, 2400);
   }
 
-  /* ---------- セレクトボックス生成 ---------- */
+  /* ---------- キャラアイコン ---------- */
 
-  function fillFighterSelect(select, opts) {
-    opts = opts || {};
-    var frag = document.createDocumentFragment();
-    if (opts.allLabel) {
-      var head = document.createElement('option');
-      head.value = ALL;
-      head.textContent = opts.allLabel;
-      frag.appendChild(head);
+  function fighterOf(name) { return FIGHTER_BY_NAME[name] || null; }
+
+  function iconUrl(fighter) {
+    if (!ICON_BASE || !fighter) return '';
+    return ICON_BASE.replace('{slug}', fighter.slug);
+  }
+
+  /* 名前の先頭 1 文字（フォールバックアバター用）。
+     「Mr.ゲーム&ウォッチ」「Wii Fit トレーナー」などは記号を避けて頭文字を選ぶ。 */
+  function initialOf(name) {
+    var cleaned = name.replace(/^(Mr\.|Mii\s*)/, '');
+    return (cleaned.trim() || name).charAt(0);
+  }
+
+  /**
+   * キャラアイコン要素を生成する。
+   * 常にシリーズカラーのアバター（頭文字入り）を土台として描画し、
+   * 画像が読み込めた場合のみその上に重ねて表示する。
+   * 画像の読み込みに失敗すれば土台のアバターがそのまま残る。
+   */
+  function buildIcon(name, size) {
+    var fighter = fighterOf(name);
+    var series = fighter && SERIES[fighter.series];
+    var colors = series ? series.colors : ['#3a3f52', '#5a6076'];
+
+    var el = document.createElement('span');
+    el.className = 'ficon' + (size ? ' ficon--' + size : '');
+    el.style.background = 'linear-gradient(135deg, ' + colors[0] + ', ' + colors[1] + ')';
+    el.setAttribute('aria-hidden', 'true');
+
+    var initial = document.createElement('span');
+    initial.className = 'ficon__initial';
+    initial.textContent = initialOf(name);
+    el.appendChild(initial);
+
+    var url = iconsAvailable ? iconUrl(fighter) : '';
+    if (url) {
+      var img = document.createElement('img');
+      img.className = 'ficon__img';
+      img.src = url;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      /* 読み込み失敗時は画像を取り除き、下地のアバターを見せる */
+      img.addEventListener('error', function () {
+        if (img.parentNode) img.parentNode.removeChild(img);
+      });
+      el.appendChild(img);
     }
-    var list = opts.source || FIGHTERS;
-    for (var i = 0; i < list.length; i++) {
-      var op = document.createElement('option');
-      op.value = list[i];
-      op.textContent = list[i];
-      frag.appendChild(op);
-    }
-    select.innerHTML = '';
-    select.appendChild(frag);
+    return el;
+  }
+
+  /** 「すべて」を表す汎用アイコン */
+  function buildAllIcon(size) {
+    var el = document.createElement('span');
+    el.className = 'ficon ficon--all' + (size ? ' ficon--' + size : '');
+    el.setAttribute('aria-hidden', 'true');
+    var initial = document.createElement('span');
+    initial.className = 'ficon__initial';
+    initial.textContent = '全';
+    el.appendChild(initial);
+    return el;
+  }
+
+  /** 画像アイコンが使えるかを 1 枚だけ試験読み込みして判定する */
+  function probeIcons(done) {
+    var first = FIGHTERS[0];
+    var url = iconUrl(first);
+    if (!url) { done(false); return; }
+    var probe = new Image();
+    var settled = false;
+    var finish = function (ok) {
+      if (settled) return;
+      settled = true;
+      done(ok);
+    };
+    probe.onload = function () { finish(probe.naturalWidth > 0); };
+    probe.onerror = function () { finish(false); };
+    setTimeout(function () { finish(false); }, 5000);
+    probe.src = url;
   }
 
   /* ---------- 集計 ---------- */
@@ -151,6 +222,117 @@
     return sorted;
   }
 
+  /* ---------- キャラクター選択ピッカー ---------- */
+
+  var pickerState = { targetId: null, includeAll: false, onPick: null, lastFocus: null };
+
+  function pickerLabel(targetId) {
+    var value = picks[targetId];
+    return value === ALL || !value ? null : value;
+  }
+
+  /** 選択ボタンの見た目を更新 */
+  function renderPickerButton(targetId) {
+    var btn = $(targetId);
+    if (!btn) return;
+    var value = picks[targetId];
+    btn.innerHTML = '';
+
+    var isAll = (value === ALL || !value);
+    btn.appendChild(isAll ? buildAllIcon('sm') : buildIcon(value, 'sm'));
+
+    var label = document.createElement('span');
+    label.className = 'picker-btn__label';
+    label.textContent = isAll
+      ? (targetId === 'historyFilter' ? 'すべての相手' : 'すべての自キャラ')
+      : value;
+    btn.appendChild(label);
+
+    var caret = document.createElement('span');
+    caret.className = 'picker-btn__caret';
+    caret.setAttribute('aria-hidden', 'true');
+    btn.appendChild(caret);
+  }
+
+  function buildFighterTile(name, isAllTile, selected) {
+    var tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = 'tile' + (selected ? ' is-selected' : '');
+    tile.dataset.value = isAllTile ? ALL : name;
+
+    tile.appendChild(isAllTile ? buildAllIcon() : buildIcon(name));
+
+    var label = document.createElement('span');
+    label.className = 'tile__name';
+    label.textContent = isAllTile ? 'すべて' : name;
+    tile.appendChild(label);
+    return tile;
+  }
+
+  function renderPickerGrid(query) {
+    var grid = $('pickerGrid');
+    var current = picks[pickerState.targetId];
+    var q = (query || '').trim().toLowerCase();
+
+    var list = FIGHTERS.filter(function (f) {
+      if (!q) return true;
+      var series = SERIES[f.series];
+      return f.name.toLowerCase().indexOf(q) >= 0 ||
+        f.slug.indexOf(q) >= 0 ||
+        (series && series.label.toLowerCase().indexOf(q) >= 0);
+    });
+
+    grid.innerHTML = '';
+    var frag = document.createDocumentFragment();
+    if (pickerState.includeAll && !q) {
+      frag.appendChild(buildFighterTile(null, true, current === ALL));
+    }
+    for (var i = 0; i < list.length; i++) {
+      frag.appendChild(buildFighterTile(list[i].name, false, current === list[i].name));
+    }
+    grid.appendChild(frag);
+    $('pickerEmpty').hidden = list.length > 0;
+  }
+
+  function openPicker(targetId) {
+    var btn = $(targetId);
+    pickerState.targetId = targetId;
+    pickerState.includeAll = (targetId === 'historyFilter' || targetId === 'statsMyChar');
+    pickerState.lastFocus = btn;
+
+    $('pickerTitle').textContent =
+      targetId === 'myChar' ? '自分のキャラを選択' :
+      targetId === 'oppChar' ? '相手のキャラを選択' :
+      targetId === 'historyFilter' ? '相手キャラで絞り込み' : '自分のキャラで絞り込み';
+
+    $('pickerSearch').value = '';
+    renderPickerGrid('');
+    $('picker').hidden = false;
+    document.body.classList.add('is-locked');
+
+    var selected = $('pickerGrid').querySelector('.tile.is-selected');
+    if (selected && selected.scrollIntoView) selected.scrollIntoView({ block: 'center' });
+  }
+
+  function closePicker() {
+    $('picker').hidden = true;
+    document.body.classList.remove('is-locked');
+    if (pickerState.lastFocus) pickerState.lastFocus.focus();
+    pickerState.targetId = null;
+  }
+
+  function handleTileClick(e) {
+    var tile = e.target.closest('.tile');
+    if (!tile || !pickerState.targetId) return;
+    var targetId = pickerState.targetId;
+    picks[targetId] = tile.dataset.value;
+    renderPickerButton(targetId);
+    closePicker();
+
+    if (targetId === 'historyFilter') renderHistory();
+    else if (targetId === 'statsMyChar') renderStats();
+  }
+
   /* ---------- 描画: 対戦カード ---------- */
 
   function buildMatchItem(battle) {
@@ -175,15 +357,25 @@
 
     var vs = document.createElement('div');
     vs.className = 'match__vs';
+
     var mine = document.createElement('span');
     mine.className = 'match__char match__char--mine';
-    mine.textContent = battle.myChar;
+    mine.appendChild(buildIcon(battle.myChar, 'sm'));
+    var mineName = document.createElement('span');
+    mineName.textContent = battle.myChar;
+    mine.appendChild(mineName);
+
     var sep = document.createElement('span');
     sep.className = 'match__sep';
     sep.textContent = 'VS';
+
     var opp = document.createElement('span');
     opp.className = 'match__char';
-    opp.textContent = battle.oppChar;
+    opp.appendChild(buildIcon(battle.oppChar, 'sm'));
+    var oppName = document.createElement('span');
+    oppName.textContent = battle.oppChar;
+    opp.appendChild(oppName);
+
     vs.appendChild(mine); vs.appendChild(sep); vs.appendChild(opp);
 
     main.appendChild(head);
@@ -230,8 +422,8 @@
   /* ---------- 描画: 履歴 ---------- */
 
   function renderHistory() {
-    var filter = $('historyFilter').value;
-    var list = filter && filter !== ALL
+    var filter = picks.historyFilter;
+    var list = (filter && filter !== ALL)
       ? battles.filter(function (b) { return b.oppChar === filter; })
       : battles;
 
@@ -249,32 +441,6 @@
     renderMatchList($('recentList'), recent);
   }
 
-  function renderHistoryFilter() {
-    var sel = $('historyFilter');
-    var current = sel.value;
-    var used = [];
-    var seen = {};
-    for (var i = 0; i < battles.length; i++) {
-      if (!seen[battles[i].oppChar]) { seen[battles[i].oppChar] = true; used.push(battles[i].oppChar); }
-    }
-    used.sort(function (a, b) { return FIGHTERS.indexOf(a) - FIGHTERS.indexOf(b); });
-    fillFighterSelect(sel, { allLabel: 'すべての相手', source: used });
-    sel.value = (current && seen[current]) ? current : ALL;
-  }
-
-  function renderStatsMyCharFilter() {
-    var sel = $('statsMyChar');
-    var current = sel.value;
-    var used = [];
-    var seen = {};
-    for (var i = 0; i < battles.length; i++) {
-      if (!seen[battles[i].myChar]) { seen[battles[i].myChar] = true; used.push(battles[i].myChar); }
-    }
-    used.sort(function (a, b) { return FIGHTERS.indexOf(a) - FIGHTERS.indexOf(b); });
-    fillFighterSelect(sel, { allLabel: 'すべての自キャラ', source: used });
-    sel.value = (current && seen[current]) ? current : ALL;
-  }
-
   /* ---------- 描画: 分析 ---------- */
 
   function buildRankItem(row, index) {
@@ -284,6 +450,8 @@
     var no = document.createElement('span');
     no.className = 'rank__no';
     no.textContent = index + 1;
+
+    var icon = buildIcon(row.name);
 
     var body = document.createElement('div');
     body.className = 'rank__body';
@@ -314,6 +482,7 @@
     body.appendChild(meta);
 
     li.appendChild(no);
+    li.appendChild(icon);
     li.appendChild(body);
     return li;
   }
@@ -326,7 +495,7 @@
   }
 
   function renderStats() {
-    var myFilter = $('statsMyChar').value;
+    var myFilter = picks.statsMyChar;
     var target = (myFilter && myFilter !== ALL)
       ? battles.filter(function (b) { return b.myChar === myFilter; })
       : battles;
@@ -347,8 +516,10 @@
 
   function renderAll() {
     renderSummary();
-    renderHistoryFilter();
-    renderStatsMyCharFilter();
+    renderPickerButton('myChar');
+    renderPickerButton('oppChar');
+    renderPickerButton('historyFilter');
+    renderPickerButton('statsMyChar');
     renderHistory();
     renderStats();
   }
@@ -357,10 +528,10 @@
 
   function handleSubmit(e) {
     e.preventDefault();
-    var myChar = $('myChar').value;
-    var oppChar = $('oppChar').value;
+    var myChar = picks.myChar;
+    var oppChar = picks.oppChar;
     var resultEl = document.querySelector('input[name="result"]:checked');
-    if (!myChar || !oppChar || !resultEl) return;
+    if (!myChar || !oppChar || !resultEl) { showToast('キャラクターを選択してください'); return; }
 
     var battle = {
       id: createId(),
@@ -475,20 +646,28 @@
     battles = loadBattles();
     loadPrefs();
 
-    fillFighterSelect($('myChar'));
-    fillFighterSelect($('oppChar'));
-    $('myChar').value = prefs.myChar && FIGHTERS.indexOf(prefs.myChar) >= 0 ? prefs.myChar : FIGHTERS[0];
-    $('oppChar').value = prefs.oppChar && FIGHTERS.indexOf(prefs.oppChar) >= 0 ? prefs.oppChar : FIGHTERS[0];
+    picks.myChar = FIGHTER_BY_NAME[prefs.myChar] ? prefs.myChar : FIGHTERS[0].name;
+    picks.oppChar = FIGHTER_BY_NAME[prefs.oppChar] ? prefs.oppChar : FIGHTERS[0].name;
 
     $('battleForm').addEventListener('submit', handleSubmit);
     document.addEventListener('click', handleDeleteClick);
-    $('historyFilter').addEventListener('change', renderHistory);
     $('statsSort').addEventListener('change', renderStats);
-    $('statsMyChar').addEventListener('change', renderStats);
     $('clearAllBtn').addEventListener('click', handleClearAll);
     $('exportBtn').addEventListener('click', handleExport);
     $('importBtn').addEventListener('click', function () { $('importFile').click(); });
     $('importFile').addEventListener('change', handleImportFile);
+
+    var pickerBtns = document.querySelectorAll('[data-picker="fighter"]');
+    for (var p = 0; p < pickerBtns.length; p++) {
+      pickerBtns[p].addEventListener('click', function (e) { openPicker(e.currentTarget.id); });
+    }
+    $('pickerGrid').addEventListener('click', handleTileClick);
+    $('pickerSearch').addEventListener('input', function (e) { renderPickerGrid(e.target.value); });
+    var closers = $('picker').querySelectorAll('[data-close]');
+    for (var c = 0; c < closers.length; c++) closers[c].addEventListener('click', closePicker);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !$('picker').hidden) closePicker();
+    });
 
     var tabs = document.querySelectorAll('.tab');
     for (var i = 0; i < tabs.length; i++) {
@@ -496,6 +675,14 @@
     }
 
     renderAll();
+
+    /* 画像アイコンが使える環境なら、判定後にアイコン付きで描き直す */
+    probeIcons(function (ok) {
+      if (!ok) return;
+      iconsAvailable = true;
+      renderAll();
+      if (!$('picker').hidden) renderPickerGrid($('pickerSearch').value);
+    });
   }
 
   if (document.readyState === 'loading') {
