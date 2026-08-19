@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0d0f16">
+<title>SMASH RECORD - スマブラSP 戦績トラッカー</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚔️</text></svg>">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-header__inner">
+    <h1 class="logo"><span class="logo__mark">⚔</span><span class="logo__text">SMASH<em>RECORD</em></span></h1>
+    <p class="logo__sub">スマブラSP 戦績トラッカー</p>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button class="tab is-active" role="tab" data-tab="record">記録</button>
+  <button class="tab" role="tab" data-tab="history">履歴</button>
+  <button class="tab" role="tab" data-tab="stats">分析</button>
+</nav>
+
+<main class="content">
+
+  <!-- ============ 記録 ============ -->
+  <section class="panel is-active" id="panel-record" data-panel="record">
+    <div class="summary" id="summaryTop">
+      <div class="summary__item"><span class="summary__num" id="sumTotal">0</span><span class="summary__label">対戦</span></div>
+      <div class="summary__item summary__item--win"><span class="summary__num" id="sumWin">0</span><span class="summary__label">勝利</span></div>
+      <div class="summary__item summary__item--lose"><span class="summary__num" id="sumLose">0</span><span class="summary__label">敗北</span></div>
+      <div class="summary__item"><span class="summary__num" id="sumRate">-</span><span class="summary__label">勝率</span></div>
+    </div>
+
+    <form id="battleForm" class="card form" autocomplete="off">
+      <h2 class="card__title">対戦を記録</h2>
+
+      <div class="field">
+        <label class="field__label" for="myChar">自分のキャラ</label>
+        <div class="select-wrap">
+          <select id="myChar" class="select" required></select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="oppChar">相手のキャラ</label>
+        <div class="select-wrap">
+          <select id="oppChar" class="select" required></select>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="field__label">勝敗</span>
+        <div class="result-toggle">
+          <input type="radio" name="result" id="resWin" value="win" checked>
+          <label for="resWin" class="result-btn result-btn--win">WIN<small>勝ち</small></label>
+          <input type="radio" name="result" id="resLose" value="lose">
+          <label for="resLose" class="result-btn result-btn--lose">LOSE<small>負け</small></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="memo">メモ<span class="field__opt">任意</span></label>
+        <textarea id="memo" class="textarea" rows="2" maxlength="200" placeholder="立ち回りの反省、崖の攻防、など"></textarea>
+      </div>
+
+      <button type="submit" class="btn btn--primary">この対戦を保存する</button>
+    </form>
+
+    <div class="card recent" id="recentCard" hidden>
+      <h2 class="card__title">直近の対戦</h2>
+      <ul class="match-list" id="recentList"></ul>
+    </div>
+  </section>
+
+  <!-- ============ 履歴 ============ -->
+  <section class="panel" id="panel-history" data-panel="history">
+    <div class="card">
+      <div class="card__head">
+        <h2 class="card__title">対戦履歴 <span class="badge" id="historyCount">0</span></h2>
+        <div class="select-wrap select-wrap--sm">
+          <select id="historyFilter" class="select select--sm"></select>
+        </div>
+      </div>
+      <ul class="match-list" id="historyList"></ul>
+      <p class="empty" id="historyEmpty">まだ対戦記録がありません。<br>「記録」タブから追加してください。</p>
+    </div>
+
+    <div class="card danger-zone">
+      <h2 class="card__title">データ管理</h2>
+      <div class="danger-zone__btns">
+        <button class="btn btn--ghost" id="exportBtn">JSONで書き出し</button>
+        <button class="btn btn--ghost" id="importBtn">JSONを読み込み</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+      <button class="btn btn--danger" id="clearAllBtn">全データを削除</button>
+    </div>
+  </section>
+
+  <!-- ============ 分析 ============ -->
+  <section class="panel" id="panel-stats" data-panel="stats">
+    <div class="card">
+      <div class="card__head">
+        <h2 class="card__title">相手キャラ別 戦績</h2>
+        <div class="select-wrap select-wrap--sm">
+          <select id="statsSort" class="select select--sm">
+            <option value="rate">勝率順</option>
+            <option value="count">対戦数順</option>
+            <option value="win">勝利数順</option>
+            <option value="worst">苦手順</option>
+          </select>
+        </div>
+      </div>
+      <div class="filter-row">
+        <label class="field__label field__label--inline" for="statsMyChar">自分のキャラで絞り込み</label>
+        <div class="select-wrap select-wrap--sm">
+          <select id="statsMyChar" class="select select--sm"></select>
+        </div>
+      </div>
+      <ol class="rank-list" id="rankList"></ol>
+      <p class="empty" id="statsEmpty">集計できる対戦記録がありません。</p>
+    </div>
+
+    <div class="card">
+      <h2 class="card__title">自分のキャラ別 戦績</h2>
+      <ol class="rank-list" id="myRankList"></ol>
+      <p class="empty" id="myStatsEmpty">集計できる対戦記録がありません。</p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="app-footer">
+  <p>データはこの端末のブラウザ (localStorage) にのみ保存されます。</p>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="characters.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
