@@ -591,6 +591,7 @@
     renderPickerButton('statsMyChar');
     renderHistory();
     renderStats();
+    renderHeaderSync();
   }
 
   /* ---------- イベント ---------- */
@@ -736,7 +737,58 @@
   var awaitingCode = false;
   var pendingEmail = '';
 
+  /* 直近の同期状態。記録の増減でヘッダーの「未同期 N件」を更新するため、
+     onChange を待たずに再描画できるよう保持しておく。 */
+  var syncState = { configured: false, status: 'disabled', detail: '', email: '' };
+
+  /* ヘッダーのステータスチップ。未ログインのままローカルに記録が溜まっている
+     状態は「気づかないうちに失う」事故に直結するため、中立表示ではなく
+     警告として件数付きで出す。 */
+  function renderHeaderSync() {
+    var el = $('headerSync');
+    if (!el) return;
+
+    if (!syncState.configured) { el.hidden = true; return; }
+    el.hidden = false;
+
+    var cls = '', text = '', label = '';
+    if (syncState.email) {
+      if (syncState.status === 'syncing')      { cls = 'is-busy'; text = '同期中';   label = '同期中です'; }
+      else if (syncState.status === 'offline') { cls = 'is-warn'; text = 'オフライン'; label = 'オフラインです。接続が戻り次第、自動で同期されます'; }
+      else if (syncState.status === 'error')   { cls = 'is-bad';  text = '同期エラー'; label = '同期に失敗しました'; }
+      else                                     { cls = 'is-ok';   text = '同期済み';  label = 'クラウドと同期されています'; }
+    } else if (battles.length > 0) {
+      cls = 'is-warn';
+      /* 桁数が増えるとヘッダーのレイアウトが崩れるため上限を設ける */
+      text = '未同期 ' + (battles.length > 99 ? '99+' : battles.length) + '件';
+      label = battles.length + '件がこの端末にしか保存されていません。ログインするとクラウドに保存されます';
+    } else {
+      text = '未ログイン';
+      label = 'ログインするとクラウドに保存されます';
+    }
+
+    el.className = 'hsync' + (cls ? ' ' + cls : '');
+    $('headerSyncText').textContent = text;
+    el.setAttribute('aria-label', label);
+    el.title = label;
+  }
+
+  /* ヘッダーから同期カードへ誘導する */
+  function goToSyncCard() {
+    switchTab('history');
+    var card = $('syncCard');
+    if (!card) return;
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    setTimeout(function () {
+      card.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+      card.classList.add('is-flash');
+      setTimeout(function () { card.classList.remove('is-flash'); }, 1200);
+    }, 0);
+  }
+
   function renderAccount(st) {
+    syncState = st;
+    renderHeaderSync();
     var badge = $('syncStatus');
     var meta = STATUS_LABEL[st.status] || STATUS_LABEL.disabled;
     badge.textContent = meta.text;
@@ -815,6 +867,7 @@
   function initSync() {
     if (typeof SmashSync === 'undefined') return;
 
+    $('headerSync').addEventListener('click', goToSyncCard);
     $('syncSendBtn').addEventListener('click', handleSendCode);
     $('syncVerifyBtn').addEventListener('click', handleVerifyCode);
     $('syncCancelBtn').addEventListener('click', function () {
