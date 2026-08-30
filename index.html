@@ -85,6 +85,35 @@
       <p class="empty" id="historyEmpty">まだ対戦記録がありません。<br>「記録」タブから追加してください。</p>
     </div>
 
+    <div class="card sync" id="syncCard">
+      <div class="card__head">
+        <h2 class="card__title">クラウド同期</h2>
+        <span class="sync__status is-off" id="syncStatus">未設定</span>
+      </div>
+      <p class="sync__desc" id="syncDesc"></p>
+
+      <div class="sync__form" id="syncSignIn" hidden>
+        <input type="email" id="syncEmail" class="input" placeholder="you@example.com"
+               autocomplete="email" aria-label="メールアドレス">
+        <button type="button" class="btn btn--primary" id="syncSendBtn">確認メールを送る</button>
+      </div>
+
+      <div class="sync__form" id="syncVerify" hidden>
+        <input type="text" id="syncCode" class="input" inputmode="numeric" maxlength="8"
+               placeholder="6桁のコード" autocomplete="one-time-code" aria-label="確認コード">
+        <button type="button" class="btn btn--primary" id="syncVerifyBtn">ログイン</button>
+        <button type="button" class="btn btn--ghost" id="syncCancelBtn">やり直す</button>
+      </div>
+
+      <div class="sync__account" id="syncAccount" hidden>
+        <span class="sync__email" id="syncEmailLabel"></span>
+        <div class="sync__btns">
+          <button type="button" class="btn btn--ghost" id="syncNowBtn">今すぐ同期</button>
+          <button type="button" class="btn btn--ghost" id="syncOutBtn">ログアウト</button>
+        </div>
+      </div>
+    </div>
+
     <div class="card danger-zone">
       <h2 class="card__title">データ管理</h2>
       <div class="danger-zone__btns">
@@ -129,7 +158,7 @@
 </main>
 
 <footer class="app-footer">
-  <p>データはこの端末のブラウザ (localStorage) にのみ保存されます。</p>
+  <p id="storageNote">データはこの端末のブラウザ (localStorage) にのみ保存されます。</p>
 </footer>
 
 <!-- キャラクター選択ダイアログ -->
@@ -148,6 +177,11 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<!-- Supabase クライアント。読み込めない環境では sync.js が自動的に
+     クラウド同期を無効化し、アプリはローカル動作のまま起動します。 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js"></script>
+<script src="supabase-config.js"></script>
+<script src="sync.js"></script>
 <script src="characters.js"></script>
 <script src="app.js"></script>
 </body>
