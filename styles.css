@@ -596,6 +596,140 @@ input:focus-visible + .result-btn {
   line-height: 1.6;
 }
 
+/* ---------- 世界戦闘力 ---------- */
+
+.form__note {
+  margin: -4px 0 16px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.gsp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.gsp-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.gsp-row__main { flex: 1; min-width: 0; }
+
+.gsp-row__top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.gsp-row__name { font-size: 14px; font-weight: 700; }
+.gsp-row__date { color: var(--text-dim); font-size: 12px; }
+
+.gsp-row__value {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 800;
+  /* 桁を揃えて比較しやすくする */
+  font-variant-numeric: tabular-nums;
+}
+
+.gsp-row__diff { font-size: 12px; font-weight: 700; }
+.gsp-row__diff.is-up { color: var(--win); }
+.gsp-row__diff.is-down { color: var(--lose); }
+
+.gsp-row__delete {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* ---------- グラフ ---------- */
+
+.chart {
+  position: relative;
+  /* 横に溢れる場合でもページ全体は横スクロールさせない */
+  overflow-x: auto;
+  margin-bottom: 12px;
+}
+
+.chart svg { display: block; touch-action: pan-y; }
+
+.chart__tip {
+  position: absolute;
+  top: 8px;
+  z-index: 3;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(11, 13, 20, .94);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--shadow);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart__dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.legend__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.legend__chip.is-on { color: var(--text); border-color: var(--text-dim); }
+
+.legend__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+  border: 1px solid var(--line);
+}
+
 /* ---------- 対戦カード ---------- */
 
 .match-list {
