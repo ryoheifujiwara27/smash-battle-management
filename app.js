@@ -1,15 +1,24 @@
 /* =========================================================
    SMASH RECORD - スマブラSP 戦績トラッカー
-   データはすべて localStorage に保存されます。
+   ---------------------------------------------------------
+   データはまず localStorage に保存されます（ローカルファースト）。
+   クラウド同期を設定してログインした場合のみ、sync.js が
+   バックグラウンドで Supabase と双方向同期します。
+   未設定・未ログイン時の挙動は従来と完全に同じです。
    ========================================================= */
 (function () {
   'use strict';
 
   var STORAGE_KEY = 'smash-record/battles/v1';
   var PREF_KEY = 'smash-record/prefs/v1';
+  var TOMB_KEY = 'smash-record/tombstones/v1';
   var ALL = '__ALL__';
 
+  /* battles は「表示対象の記録」だけを保持する（従来どおりの形式）。
+     削除された記録は tombstones に墓標として残す。物理削除にすると
+     同期時に他端末から復活してしまうため。 */
   var battles = [];
+  var tombstones = [];
   var prefs = { myChar: '', oppChar: '' };
   /* 選択状態（キャラ名を保持。ALL は「すべて」） */
   var picks = { myChar: '', oppChar: '', historyFilter: ALL, statsMyChar: ALL };
@@ -29,7 +38,7 @@
       if (!raw) return [];
       var data = JSON.parse(raw);
       if (!Array.isArray(data)) return [];
-      return data.filter(isValidBattle);
+      return data.filter(isValidBattle).map(normalizeBattle);
     } catch (e) {
       console.error('保存データの読み込みに失敗しました', e);
       return [];
@@ -45,6 +54,66 @@
       showToast('保存に失敗しました（ストレージの空き容量をご確認ください）');
       return false;
     }
+  }
+
+  function loadTombstones() {
+    try {
+      var raw = localStorage.getItem(TOMB_KEY);
+      if (!raw) return [];
+      var data = JSON.parse(raw);
+      return Array.isArray(data) ? data.filter(function (b) { return b && b.id; }) : [];
+    } catch (e) { return []; }
+  }
+
+  function saveTombstones() {
+    try { localStorage.setItem(TOMB_KEY, JSON.stringify(tombstones)); } catch (e) { /* noop */ }
+  }
+
+  /* 旧バージョンで作られた記録には id / updatedAt が無いことがあるため補う。
+     updatedAt が無い場合は date を初期値とみなす（同期の競合解決に使う）。 */
+  function normalizeBattle(b) {
+    if (!b.id) b.id = createId();
+    if (!b.updatedAt) b.updatedAt = b.date || new Date().toISOString();
+    return b;
+  }
+
+  /* ---------- 同期レイヤーとの受け渡し ---------- */
+
+  /* 同期に渡すのは「表示中 + 墓標」の全レコード */
+  function getAllRecords() {
+    return battles.concat(tombstones);
+  }
+
+  /* 同期結果を受け取り、表示対象と墓標に振り分けて保存する */
+  function applyMerged(merged) {
+    var active = [], dead = [];
+    for (var i = 0; i < merged.length; i++) {
+      if (merged[i].deleted) dead.push(merged[i]);
+      else if (isValidBattle(merged[i])) active.push(merged[i]);
+    }
+    battles = active;
+    tombstones = dead;
+    saveBattles();
+    saveTombstones();
+    renderAll();
+  }
+
+  function touch(b) {
+    b.updatedAt = new Date().toISOString();
+    return b;
+  }
+
+  /* 記録を墓標へ移す（論理削除） */
+  function entomb(b) {
+    tombstones.push({
+      id: b.id, date: b.date, myChar: b.myChar, oppChar: b.oppChar,
+      result: b.result, memo: b.memo, deleted: true,
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  function syncSoon() {
+    if (typeof SmashSync !== 'undefined') SmashSync.notifyLocalChange();
   }
 
   function isValidBattle(b) {
@@ -539,11 +608,14 @@
       myChar: myChar,
       oppChar: oppChar,
       result: resultEl.value,
-      memo: $('memo').value.trim()
+      memo: $('memo').value.trim(),
+      deleted: false,
+      updatedAt: new Date().toISOString()
     };
 
     battles.unshift(battle);
     if (!saveBattles()) { battles.shift(); return; }
+    syncSoon();
 
     prefs.myChar = myChar;
     prefs.oppChar = oppChar;
@@ -563,8 +635,11 @@
     if (!target) return;
     if (!window.confirm(target.myChar + ' vs ' + target.oppChar + ' の記録を削除しますか？')) return;
 
+    entomb(target);
     battles = battles.filter(function (b) { return b.id !== id; });
     saveBattles();
+    saveTombstones();
+    syncSoon();
     renderAll();
     showToast('記録を削除しました');
   }
@@ -572,8 +647,11 @@
   function handleClearAll() {
     if (battles.length === 0) { showToast('削除するデータがありません'); return; }
     if (!window.confirm('すべての対戦記録（' + battles.length + '件）を削除します。この操作は取り消せません。')) return;
+    for (var i = 0; i < battles.length; i++) entomb(battles[i]);
     battles = [];
     saveBattles();
+    saveTombstones();
+    syncSoon();
     renderAll();
     showToast('全データを削除しました');
   }
@@ -606,7 +684,9 @@
             myChar: b.myChar,
             oppChar: b.oppChar,
             result: b.result,
-            memo: typeof b.memo === 'string' ? b.memo : ''
+            memo: typeof b.memo === 'string' ? b.memo : '',
+            deleted: false,
+            updatedAt: b.updatedAt || b.date || new Date().toISOString()
           };
         });
         if (valid.length === 0) { showToast('読み込める記録がありませんでした'); return; }
@@ -618,6 +698,7 @@
         battles = battles.concat(added);
         battles.sort(function (a, b) { return new Date(b.date) - new Date(a.date); });
         saveBattles();
+        syncSoon();
         renderAll();
         showToast(added.length + '件を読み込みました');
       } catch (err) {
@@ -640,10 +721,128 @@
     window.scrollTo(0, 0);
   }
 
+  /* ---------- クラウド同期 UI ---------- */
+
+  var STATUS_LABEL = {
+    disabled:   { text: '未設定',   cls: 'is-off' },
+    'signed-out': { text: '未ログイン', cls: 'is-off' },
+    syncing:    { text: '同期中…',  cls: 'is-busy' },
+    synced:     { text: '同期済み', cls: 'is-ok' },
+    offline:    { text: 'オフライン', cls: 'is-warn' },
+    error:      { text: 'エラー',   cls: 'is-bad' }
+  };
+
+  /* メール送信後、コード入力欄に切り替えるためのフラグ */
+  var awaitingCode = false;
+  var pendingEmail = '';
+
+  function renderAccount(st) {
+    var badge = $('syncStatus');
+    var meta = STATUS_LABEL[st.status] || STATUS_LABEL.disabled;
+    badge.textContent = meta.text;
+    badge.className = 'sync__status ' + meta.cls;
+
+    var signedIn = !!st.email;
+    var configured = st.configured;
+
+    $('syncSignIn').hidden = !configured || signedIn || awaitingCode;
+    $('syncVerify').hidden = !configured || signedIn || !awaitingCode;
+    $('syncAccount').hidden = !signedIn;
+
+    var note = $('storageNote');
+    if (note) {
+      note.textContent = signedIn
+        ? 'データはクラウドに保存され、ログイン中の端末すべてで共有されます。'
+        : 'データはこの端末のブラウザ (localStorage) にのみ保存されます。';
+    }
+
+    if (!configured) {
+      $('syncDesc').textContent =
+        'この端末のブラウザにのみ保存されています。別の端末から見たり、サイトデータを削除しても復元できるようにするには、クラウド同期の設定が必要です（README.md を参照）。';
+    } else if (signedIn) {
+      $('syncEmailLabel').textContent = st.email;
+      $('syncDesc').textContent = st.status === 'error'
+        ? '同期に失敗しました: ' + st.detail
+        : 'ログイン中の端末すべてで対戦記録が共有されます。';
+    } else if (awaitingCode) {
+      $('syncDesc').textContent =
+        pendingEmail + ' にメールを送りました。メール内のリンクを開くか、記載の6桁コードを入力してください。';
+    } else {
+      $('syncDesc').textContent =
+        'メールアドレスでログインすると、対戦記録がクラウドに保存され、別の端末からも同じデータを見られるようになります。';
+    }
+  }
+
+  function handleSendCode() {
+    var email = $('syncEmail').value.trim();
+    if (!email || email.indexOf('@') < 0) { showToast('メールアドレスを入力してください'); return; }
+    $('syncSendBtn').disabled = true;
+    SmashSync.signIn(email).then(function () {
+      pendingEmail = email;
+      awaitingCode = true;
+      renderAccount(SmashSync.state());
+      showToast('確認メールを送りました');
+    }).catch(function (err) {
+      showToast('送信に失敗しました: ' + (err.message || err));
+    }).then(function () {
+      $('syncSendBtn').disabled = false;
+    });
+  }
+
+  function handleVerifyCode() {
+    var code = $('syncCode').value.trim();
+    if (!code) { showToast('コードを入力してください'); return; }
+    $('syncVerifyBtn').disabled = true;
+    SmashSync.verifyCode(pendingEmail, code).then(function () {
+      awaitingCode = false;
+      $('syncCode').value = '';
+      showToast('ログインしました');
+    }).catch(function (err) {
+      showToast('ログインに失敗しました: ' + (err.message || err));
+    }).then(function () {
+      $('syncVerifyBtn').disabled = false;
+    });
+  }
+
+  function handleSignOut() {
+    if (!window.confirm('ログアウトします。この端末のデータは残りますが、以後は同期されません。')) return;
+    SmashSync.signOut().then(function () {
+      awaitingCode = false;
+      showToast('ログアウトしました');
+    });
+  }
+
+  function initSync() {
+    if (typeof SmashSync === 'undefined') return;
+
+    $('syncSendBtn').addEventListener('click', handleSendCode);
+    $('syncVerifyBtn').addEventListener('click', handleVerifyCode);
+    $('syncCancelBtn').addEventListener('click', function () {
+      awaitingCode = false;
+      renderAccount(SmashSync.state());
+    });
+    $('syncNowBtn').addEventListener('click', function () {
+      SmashSync.syncNow();
+      showToast('同期しています…');
+    });
+    $('syncOutBtn').addEventListener('click', handleSignOut);
+
+    var st = SmashSync.init({
+      getLocal: getAllRecords,
+      setLocal: applyMerged,
+      onChange: function (next) {
+        if (next.email) awaitingCode = false;
+        renderAccount(next);
+      }
+    });
+    renderAccount(st);
+  }
+
   /* ---------- 初期化 ---------- */
 
   function init() {
     battles = loadBattles();
+    tombstones = loadTombstones();
     loadPrefs();
 
     picks.myChar = FIGHTER_BY_NAME[prefs.myChar] ? prefs.myChar : FIGHTERS[0].name;
@@ -675,6 +874,8 @@
     }
 
     renderAll();
+
+    initSync();
 
     /* 画像アイコンが使える環境なら、判定後にアイコン付きで描き直す */
     probeIcons(function (ok) {

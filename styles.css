@@ -267,7 +267,7 @@ body {
 
 .select-wrap--sm::after { right: 10px; width: 6px; height: 6px; margin-top: -5px; }
 
-.select, .textarea {
+.select, .textarea, .input {
   width: 100%;
   padding: 13px 38px 13px 13px;
   border: 1px solid var(--line);
@@ -285,7 +285,10 @@ body {
   line-height: 1.5;
 }
 
-.select:focus, .textarea:focus {
+/* .select の矢印用に空けた右余白は、矢印を持たない input には不要 */
+.input { padding-right: 13px; }
+
+.select:focus, .textarea:focus, .input:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(255, 59, 48, .18);
@@ -409,6 +412,63 @@ input:focus-visible + .result-btn {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+
+/* ---------- クラウド同期 ---------- */
+
+.sync__status {
+  flex: none;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+.sync__status.is-off  { color: var(--text-dim); }
+.sync__status.is-ok   { color: var(--win);  border-color: rgba(34, 211, 166, .45); }
+.sync__status.is-busy { color: var(--even); border-color: rgba(255, 197, 61, .45); }
+.sync__status.is-warn { color: var(--even); border-color: rgba(255, 197, 61, .45); }
+.sync__status.is-bad  { color: var(--lose); border-color: rgba(255, 77, 109, .45); }
+
+.sync__desc {
+  margin: 0 0 14px;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.sync__form {
+  display: grid;
+  gap: 10px;
+}
+
+.sync__account {
+  display: grid;
+  gap: 10px;
+}
+
+.sync__email {
+  padding: 11px 13px;
+  border-radius: 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 14px;
+  font-weight: 700;
+  word-break: break-all;
+}
+
+.sync__btns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* display を指定した要素は、著者スタイルが UA の [hidden]{display:none} に
+   打ち勝ってしまうため、明示的に打ち消す（.picker[hidden] と同じ対処）。 */
+.sync__form[hidden], .sync__account[hidden] { display: none; }
 
 /* ---------- 対戦カード ---------- */
 
