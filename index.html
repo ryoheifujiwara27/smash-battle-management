@@ -13,7 +13,16 @@
 <header class="app-header">
   <div class="app-header__inner">
     <h1 class="logo"><span class="logo__mark">⚔</span><span class="logo__text">SMASH<em>RECORD</em></span></h1>
-    <p class="logo__sub">スマブラSP 戦績トラッカー</p>
+    <!-- 同期状態は画面をまたぐ情報なので、どのタブにいても見えるヘッダーに置く。
+         サブタイトルと同じ行に並べることで、ロゴと重なりようがない。
+         タップでクラウド同期カードへ移動する。未設定の環境では非表示。 -->
+    <div class="app-header__meta">
+      <p class="logo__sub">スマブラSP 戦績トラッカー</p>
+      <button type="button" class="hsync" id="headerSync" hidden>
+        <span class="hsync__dot" aria-hidden="true"></span>
+        <span class="hsync__text" id="headerSyncText"></span>
+      </button>
+    </div>
   </div>
 </header>
 
