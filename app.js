@@ -821,8 +821,19 @@
         pendingEmail + ' にメールを送りました。メール内のリンクを開くか、記載の6桁コードを入力してください。';
     } else {
       $('syncDesc').textContent =
-        'メールアドレスでログインすると、対戦記録がクラウドに保存され、別の端末からも同じデータを見られるようになります。';
+        'ログインすると対戦記録がクラウドに保存され、別の端末からも同じデータを見られるようになります。';
     }
+  }
+
+  function handleGoogleSignIn() {
+    var btn = $('syncGoogleBtn');
+    btn.disabled = true;
+    /* 成功時はページごと Google へ遷移するので、ここに戻ってこない。
+       失敗したときだけボタンを復帰させる。 */
+    SmashSync.signInWithGoogle().catch(function (err) {
+      btn.disabled = false;
+      showToast('Google ログインを開始できませんでした: ' + (err.message || err));
+    });
   }
 
   function handleSendCode() {
@@ -868,6 +879,13 @@
     if (typeof SmashSync === 'undefined') return;
 
     $('headerSync').addEventListener('click', goToSyncCard);
+    $('syncGoogleBtn').addEventListener('click', handleGoogleSignIn);
+
+    /* Google へ遷移したあとブラウザの「戻る」で復帰すると、bfcache が
+       disabled 状態ごと DOM を復元してボタンを押せなくなる。復帰時に必ず戻す。 */
+    window.addEventListener('pageshow', function () {
+      $('syncGoogleBtn').disabled = false;
+    });
     $('syncSendBtn').addEventListener('click', handleSendCode);
     $('syncVerifyBtn').addEventListener('click', handleVerifyCode);
     $('syncCancelBtn').addEventListener('click', function () {

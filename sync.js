@@ -185,6 +185,20 @@ var SmashSync = (function () {
     });
   }
 
+  /* Google ログイン。メールを一切送らないため、Supabase の組み込みメールの
+     レート制限（テスト用に 1 時間あたり数通）と無縁になる。ページ全体が
+     Google へ遷移し、認証後に戻ってきたセッションを detectSessionInUrl が拾う。 */
+  function signInWithGoogle() {
+    if (!client) return Promise.reject(new Error('クラウド同期が設定されていません'));
+    return client.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.href.split('#')[0] }
+    }).then(function (res) {
+      if (res.error) throw res.error;
+      return true;
+    });
+  }
+
   function verifyCode(email, code) {
     if (!client) return Promise.reject(new Error('クラウド同期が設定されていません'));
     return client.auth.verifyOtp({ email: email, token: code, type: 'email' })
@@ -242,6 +256,7 @@ var SmashSync = (function () {
     init: init,
     state: state,
     signIn: signIn,
+    signInWithGoogle: signInWithGoogle,
     verifyCode: verifyCode,
     signOut: signOut,
     syncNow: runSync,

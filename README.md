@@ -114,18 +114,49 @@ var SUPABASE_CONFIG = {
 > 実際のデータ保護は手順 2 の Row Level Security が担います。
 > **`service_role` キーは絶対に書かないでください**（RLS を無視できる管理者キーです）。
 
-### 4. ログイン用のメール設定
+### 4. リダイレクト先を登録する
 
-**Authentication → URL Configuration** の `Redirect URLs` に、アプリを公開している
-URL（例: `https://<ユーザー名>.github.io/smash-battle-management/`）を追加します。
+**Authentication → URL Configuration** に、アプリを公開している URL を設定します。
 
-これでアプリの「履歴」タブに表示される**クラウド同期**カードから、
-メールアドレスでログインできるようになります。届いたメールのリンクを開けばログイン完了です。
+| 欄 | 値 |
+| --- | --- |
+| Site URL | `https://<ユーザー名>.github.io/smash-battle-management/` |
+| Redirect URLs | `https://<ユーザー名>.github.io/smash-battle-management/**` |
 
-> **補足:** メール内のリンクではなく 6 桁コードで入力したい場合は、
-> **Authentication → Email Templates → Magic Link** のテンプレートに `{{ .Token }}` を
-> 追加してください。アプリ側はどちらの方法にも対応しています。
-> なお `file://` で直接開いた場合はリダイレクトが働かないため、コード入力をご利用ください。
+Redirect URLs の末尾の `**` は必須です。ログイン後の戻り先は開いていたページによって
+`.../` にも `.../index.html` にもなるため、ワイルドカードで両方を許可する必要があります。
+
+### 5. Google ログインを有効にする（推奨）
+
+ログイン方法は 2 つありますが、**Google ログインを推奨します。**
+
+| 方法 | 特徴 |
+| --- | --- |
+| **Google ログイン** | メールを一切送らないため送信制限と無縁。ワンタップで完了 |
+| メールアドレス | 追加設定が不要。ただし送信数に厳しい上限あり（下記） |
+
+> **メールログインの制限:** Supabase の組み込みメール送信はテスト用で、
+> 1 時間あたり数通しか送れません。上限に達すると
+> `email rate limit exceeded` となり、しばらくログインできなくなります。
+> 常用する場合は Google ログインか、独自 SMTP の設定が必要です。
+
+Google ログインを使うには、Google 側でクライアントを作って Supabase に登録します。
+
+1. Supabase の **Authentication → Sign In / Providers** で **Google** を開き、
+   表示される **Callback URL**（`https://<プロジェクト>.supabase.co/auth/v1/callback`）をコピー
+2. [Google Cloud Console](https://console.cloud.google.com/apis/credentials) で
+   **認証情報を作成 → OAuth クライアント ID**（種類: ウェブアプリケーション）を作成
+3. **承認済みのリダイレクト URI** に、1 でコピーした Callback URL を貼り付けて保存
+4. 発行された **クライアント ID** と **クライアントシークレット** を、
+   Supabase の Google プロバイダ設定に入力して有効化
+
+初回は Google Cloud で OAuth 同意画面の設定を求められます。個人利用なら
+User Type は「外部」、テストユーザーに自分のアカウントを追加すれば十分です。
+
+> **メールで 6 桁コードを使いたい場合:** **Authentication → Emails** の Magic Link
+> テンプレートに `{{ .Token }}` を追加すると、リンクの代わりにコードを入力できます。
+> スマホではメールのリンクが別ブラウザで開かれてログイン状態が引き継がれないことが
+> あるため、その場合はコード入力が確実です。
 
 ### 同期の仕組み
 
