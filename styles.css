@@ -556,6 +556,46 @@ input:focus-visible + .result-btn {
    打ち勝ってしまうため、明示的に打ち消す（.picker[hidden] と同じ対処）。 */
 .sync__form[hidden], .sync__account[hidden] { display: none; }
 
+/* Google ログイン。ブランドの識別性を保つため、アプリの配色ではなく
+   Google 標準の白ボタンに寄せる。 */
+.btn--google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+  color: #1f1f1f;
+  background: #fff;
+  border: 1px solid #dadce0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.btn__gicon { width: 18px; height: 18px; flex: none; }
+
+/* 区切り線つきの「または」 */
+.sync__or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.sync__or::before, .sync__or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.sync__hint {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 /* ---------- 対戦カード ---------- */
 
 .match-list {
