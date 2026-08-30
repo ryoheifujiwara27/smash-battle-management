@@ -70,3 +70,57 @@ create policy "battles_update_own" on public.battles
 drop policy if exists "battles_delete_own" on public.battles;
 create policy "battles_delete_own" on public.battles
   for delete using (auth.uid() = user_id);
+
+-- =========================================================
+-- 世界戦闘力（日別の記録）
+-- ---------------------------------------------------------
+-- 「1日・1ファイターにつき1つの値」という性質があるため、id を
+--   'g:<日付>:<ファイター名>' という決定的な値にしている。
+-- こうしておくと、別々の端末で同じ日の同じキャラを記録しても
+-- 同じ id になり、重複行ではなく last-write-wins の上書きになる。
+-- =========================================================
+
+create table if not exists public.gsp_records (
+  user_id    uuid        not null references auth.users (id) on delete cascade,
+  id         text        not null,
+
+  -- 日付は時刻を持たない（YYYY-MM-DD）。同じ日の記録を一意に扱うため。
+  date       date        not null,
+  fighter    text        not null,
+
+  -- 世界戦闘力。数百万〜一千万台になるため integer では足りず bigint を使う。
+  value      bigint      not null check (value >= 0),
+
+  deleted    boolean     not null default false,
+  updated_at timestamptz not null default now(),
+  synced_at  timestamptz not null default now(),
+
+  primary key (user_id, id)
+);
+
+-- グラフ描画のため、ファイター別・日付順の取得を効率化する
+create index if not exists gsp_user_fighter_date_idx
+  on public.gsp_records (user_id, fighter, date);
+
+drop trigger if exists gsp_set_synced_at on public.gsp_records;
+create trigger gsp_set_synced_at
+  before insert or update on public.gsp_records
+  for each row execute function public.battles_set_synced_at();
+
+alter table public.gsp_records enable row level security;
+
+drop policy if exists "gsp_select_own" on public.gsp_records;
+create policy "gsp_select_own" on public.gsp_records
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "gsp_insert_own" on public.gsp_records;
+create policy "gsp_insert_own" on public.gsp_records
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "gsp_update_own" on public.gsp_records;
+create policy "gsp_update_own" on public.gsp_records
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "gsp_delete_own" on public.gsp_records;
+create policy "gsp_delete_own" on public.gsp_records
+  for delete using (auth.uid() = user_id);

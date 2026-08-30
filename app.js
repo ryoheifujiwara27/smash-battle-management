@@ -12,6 +12,8 @@
   var STORAGE_KEY = 'smash-record/battles/v1';
   var PREF_KEY = 'smash-record/prefs/v1';
   var TOMB_KEY = 'smash-record/tombstones/v1';
+  var GSP_KEY = 'smash-record/gsp/v1';
+  var GSP_TOMB_KEY = 'smash-record/gsp-tombstones/v1';
   var ALL = '__ALL__';
 
   /* battles は「表示対象の記録」だけを保持する（従来どおりの形式）。
@@ -19,9 +21,17 @@
      同期時に他端末から復活してしまうため。 */
   var battles = [];
   var tombstones = [];
+
+  /* 世界戦闘力の日別記録。1日・1ファイターにつき 1 件で、
+     同じ日の同じキャラを再入力すると上書きになる。 */
+  var gspRecords = [];
+  var gspTombs = [];
   var prefs = { myChar: '', oppChar: '' };
   /* 選択状態（キャラ名を保持。ALL は「すべて」） */
-  var picks = { myChar: '', oppChar: '', historyFilter: ALL, statsMyChar: ALL };
+  var picks = { myChar: '', oppChar: '', historyFilter: ALL, statsMyChar: ALL, gspChar: '' };
+
+  /* グラフに表示するファイター。空なら記録のある全ファイターを表示する。 */
+  var gspShown = {};
 
   /* 画像アイコンが利用可能かどうか。起動時に 1 枚だけ試験読み込みして判定し、
      失敗した場合はシリーズカラーのフォールバックアバターのみを使用します。 */
@@ -75,6 +85,70 @@
     if (!b.id) b.id = createId();
     if (!b.updatedAt) b.updatedAt = b.date || new Date().toISOString();
     return b;
+  }
+
+  /* ---------- 世界戦闘力 ---------- */
+
+  /* id を日付とファイターから決定的に作る。こうすると別の端末で同じ日の
+     同じキャラを記録しても id が一致し、行が重複せず上書きになる。 */
+  function gspId(date, fighter) { return 'g:' + date + ':' + fighter; }
+
+  function isValidGsp(g) {
+    return g && typeof g === 'object' &&
+      typeof g.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(g.date) &&
+      typeof g.fighter === 'string' && g.fighter !== '' &&
+      typeof g.value === 'number' && isFinite(g.value) && g.value >= 0;
+  }
+
+  function loadGsp(key) {
+    try {
+      var raw = localStorage.getItem(key);
+      if (!raw) return [];
+      var data = JSON.parse(raw);
+      if (!Array.isArray(data)) return [];
+      return data.filter(function (g) { return g && g.id; });
+    } catch (e) { return []; }
+  }
+
+  function saveGsp() {
+    try {
+      localStorage.setItem(GSP_KEY, JSON.stringify(gspRecords));
+      localStorage.setItem(GSP_TOMB_KEY, JSON.stringify(gspTombs));
+      return true;
+    } catch (e) {
+      showToast('保存に失敗しました（ストレージの空き容量をご確認ください）');
+      return false;
+    }
+  }
+
+  function getAllGsp() { return gspRecords.concat(gspTombs); }
+
+  function applyMergedGsp(merged) {
+    var active = [], dead = [];
+    for (var i = 0; i < merged.length; i++) {
+      if (merged[i].deleted) dead.push(merged[i]);
+      else if (isValidGsp(merged[i])) active.push(merged[i]);
+    }
+    gspRecords = active;
+    gspTombs = dead;
+    saveGsp();
+    renderAll();
+  }
+
+  /* 日付順（古い順）に並べ替えた、指定ファイターの記録を返す */
+  function gspSeries(fighter) {
+    return gspRecords
+      .filter(function (g) { return g.fighter === fighter; })
+      .sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+  }
+
+  /* 記録のあるファイターを、記録数の多い順に返す */
+  function gspFighters() {
+    var count = {};
+    for (var i = 0; i < gspRecords.length; i++) {
+      count[gspRecords[i].fighter] = (count[gspRecords[i].fighter] || 0) + 1;
+    }
+    return Object.keys(count).sort(function (a, b) { return count[b] - count[a]; });
   }
 
   /* ---------- 同期レイヤーとの受け渡し ---------- */
@@ -372,6 +446,7 @@
     $('pickerTitle').textContent =
       targetId === 'myChar' ? '自分のキャラを選択' :
       targetId === 'oppChar' ? '相手のキャラを選択' :
+      targetId === 'gspChar' ? '記録するファイターを選択' :
       targetId === 'historyFilter' ? '相手キャラで絞り込み' : '自分のキャラで絞り込み';
 
     $('pickerSearch').value = '';
@@ -400,6 +475,7 @@
 
     if (targetId === 'historyFilter') renderHistory();
     else if (targetId === 'statsMyChar') renderStats();
+    else if (targetId === 'gspChar') renderGspList();
   }
 
   /* ---------- 描画: 対戦カード ---------- */
@@ -581,6 +657,349 @@
     $('myStatsEmpty').hidden = myRows.length > 0;
   }
 
+
+  /* ---------- 世界戦闘力: 一覧 ---------- */
+
+  function formatGsp(v) { return v.toLocaleString('ja-JP'); }
+
+  /* 軸ラベル用。1250万 のように万単位で短く表す */
+  function formatGspShort(v) {
+    if (v >= 10000) {
+      var man = v / 10000;
+      return (man >= 100 ? Math.round(man) : Math.round(man * 10) / 10) + '万';
+    }
+    return String(Math.round(v));
+  }
+
+  function renderGspList() {
+    renderPickerButton('gspChar');
+    var list = $('gspList');
+    var card = $('gspRecentCard');
+    if (!list || !card) return;
+
+    var recent = gspRecords.slice()
+      .sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; })
+      .slice(0, 8);
+
+    card.hidden = recent.length === 0;
+    list.innerHTML = '';
+
+    for (var i = 0; i < recent.length; i++) {
+      var g = recent[i];
+      var li = document.createElement('li');
+      li.className = 'gsp-row';
+
+      li.appendChild(buildIcon(g.fighter, 'sm'));
+
+      var main = document.createElement('div');
+      main.className = 'gsp-row__main';
+
+      var top = document.createElement('div');
+      top.className = 'gsp-row__top';
+      var nm = document.createElement('span');
+      nm.className = 'gsp-row__name';
+      nm.textContent = g.fighter;
+      var dt = document.createElement('span');
+      dt.className = 'gsp-row__date';
+      dt.textContent = g.date;
+      top.appendChild(nm);
+      top.appendChild(dt);
+
+      var val = document.createElement('div');
+      val.className = 'gsp-row__value';
+      val.textContent = formatGsp(g.value);
+
+      /* 同じファイターの 1 つ前の記録との差を出す */
+      var series = gspSeries(g.fighter);
+      var idx = -1;
+      for (var k = 0; k < series.length; k++) if (series[k].id === g.id) { idx = k; break; }
+      if (idx > 0) {
+        var diff = g.value - series[idx - 1].value;
+        if (diff !== 0) {
+          var d = document.createElement('span');
+          d.className = 'gsp-row__diff ' + (diff > 0 ? 'is-up' : 'is-down');
+          d.textContent = (diff > 0 ? '+' : '−') + formatGsp(Math.abs(diff));
+          val.appendChild(d);
+        }
+      }
+
+      main.appendChild(top);
+      main.appendChild(val);
+      li.appendChild(main);
+
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'gsp-row__delete';
+      del.dataset.id = g.id;
+      del.setAttribute('aria-label', g.date + ' の ' + g.fighter + ' の記録を削除');
+      del.textContent = '×';
+      li.appendChild(del);
+
+      list.appendChild(li);
+    }
+  }
+
+  /* ---------- 世界戦闘力: 折れ線グラフ ---------- */
+
+  /* ダーク背景(#171b28)で検証済みのカテゴリ配色。
+     全ペアで色覚多様性の分離 ΔE 8.6 以上・コントラスト 3:1 以上を満たす。
+     系列が 6 を超えたら色を使い回さず、表示するファイターを選ばせる。 */
+  var GSP_COLORS = ['#0059ff', '#e10061', '#00a0ae', '#ac8700', '#007a00', '#c000bc'];
+  var GSP_MAX_SERIES = GSP_COLORS.length;
+
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function svg(tag, attrs) {
+    var el = document.createElementNS(SVGNS, tag);
+    for (var k in attrs) if (attrs.hasOwnProperty(k)) el.setAttribute(k, attrs[k]);
+    return el;
+  }
+
+  var chartState = { series: [], box: null };
+
+  /* 軸の目盛りを切りのよい値に丸める。1268万 のような半端な目盛りは
+     読み取れないため、1・2・2.5・5 の刻みに寄せる。 */
+  function niceScale(min, max, count) {
+    var span = (max - min) || Math.abs(max) || 1;
+    var raw = span / count;
+    var mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+    var n = raw / mag;
+    var step = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * mag;
+    return {
+      min: Math.floor(min / step) * step,
+      max: Math.ceil(max / step) * step,
+      step: step
+    };
+  }
+
+  /* 表示対象のファイター。未選択なら記録数の多い順に既定値を決める */
+  function activeGspFighters() {
+    var all = gspFighters();
+    var chosen = all.filter(function (f) { return gspShown[f]; });
+    if (chosen.length) return chosen.slice(0, GSP_MAX_SERIES);
+    return all.slice(0, GSP_MAX_SERIES);
+  }
+
+  function renderGspChart() {
+    var host = $('gspChart');
+    var legend = $('gspLegend');
+    var empty = $('gspEmpty');
+    if (!host || !legend || !empty) return;
+
+    var all = gspFighters();
+    host.innerHTML = '';
+    legend.innerHTML = '';
+
+    if (all.length === 0) {
+      empty.hidden = false;
+      host.hidden = true;
+      legend.hidden = true;
+      return;
+    }
+    empty.hidden = true;
+    host.hidden = false;
+    legend.hidden = false;
+
+    var shown = activeGspFighters();
+
+    /* 凡例。色だけに頼らないよう、名前と記録数を必ず併記する。
+       クリックで表示/非表示を切り替えられる。 */
+    for (var i = 0; i < all.length; i++) {
+      var f = all[i];
+      var on = shown.indexOf(f) >= 0;
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'legend__chip' + (on ? ' is-on' : '');
+      chip.dataset.fighter = f;
+      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+
+      var sw = document.createElement('span');
+      sw.className = 'legend__swatch';
+      sw.style.background = on ? GSP_COLORS[shown.indexOf(f)] : 'transparent';
+      chip.appendChild(sw);
+
+      var tx = document.createElement('span');
+      tx.textContent = f;
+      chip.appendChild(tx);
+
+      legend.appendChild(chip);
+    }
+
+    /* 系列を組み立てる */
+    var series = [];
+    for (var s = 0; s < shown.length; s++) {
+      var pts = gspSeries(shown[s]);
+      if (pts.length) series.push({ fighter: shown[s], color: GSP_COLORS[s], points: pts });
+    }
+    if (!series.length) return;
+
+    drawChart(host, series);
+    chartState.series = series;
+  }
+
+  function drawChart(host, series) {
+    var W = Math.max(280, host.clientWidth || 320);
+    var H = 260;
+
+    /* 系列名を線の終端に直接書く（4 系列以下のとき）。必要な右余白は
+       ラベルの実際の長さから見積もる。決め打ちだと長い名前で見切れる。
+       余白が広くなりすぎて描画領域を圧迫する場合は直接ラベルをやめ、
+       凡例だけで識別させる。 */
+    var LABEL_MAX = 5;
+    var CHAR_W = 11;          /* 11px の日本語 1 文字ぶんの目安 */
+    var labelOf = function (name) {
+      return name.length > LABEL_MAX ? name.slice(0, LABEL_MAX) + '…' : name;
+    };
+    var direct = series.length <= 4;
+    var labelW = 0;
+    if (direct) {
+      for (var li = 0; li < series.length; li++) {
+        labelW = Math.max(labelW, labelOf(series[li].fighter).length * CHAR_W);
+      }
+      /* 点からの離れ 9px + ラベル + 右端の余白 4px */
+      var need = 9 + labelW + 4;
+      if (need > W * 0.34) direct = false; else labelW = need;
+    }
+    var PAD = { l: 54, r: direct ? labelW : 14, t: 14, b: 28 };
+
+    var xs = [], ys = [];
+    for (var i = 0; i < series.length; i++)
+      for (var j = 0; j < series[i].points.length; j++) {
+        xs.push(Date.parse(series[i].points[j].date));
+        ys.push(series[i].points[j].value);
+      }
+    var xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs);
+    var yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys);
+    if (xMax === xMin) { xMin -= 86400000; xMax += 86400000; }
+    /* 値域が狭いと線が潰れるので、上下に 8% の余白を持たせてから
+       目盛りを切りのよい値に丸める */
+    var span = (yMax - yMin) || Math.max(1, yMax * 0.02);
+    var sc = niceScale(Math.max(0, yMin - span * 0.08), yMax + span * 0.08, 4);
+    yMin = sc.min; yMax = sc.max;
+
+    var px = function (t) { return PAD.l + (t - xMin) / (xMax - xMin) * (W - PAD.l - PAD.r); };
+    var py = function (v) { return PAD.t + (1 - (v - yMin) / (yMax - yMin)) * (H - PAD.t - PAD.b); };
+
+    var root = svg('svg', {
+      width: W, height: H, viewBox: '0 0 ' + W + ' ' + H,
+      role: 'img', 'aria-label': '世界戦闘力の推移。' +
+        series.map(function (s) { return s.fighter + ' ' + s.points.length + '件'; }).join('、')
+    });
+
+    /* 目盛りとグリッド。主役は線なので、罫線は背景に沈める */
+    for (var v = yMin; v <= yMax + sc.step * 0.001; v += sc.step) {
+      var y = py(v);
+      root.appendChild(svg('line', {
+        x1: PAD.l, y1: y, x2: W - PAD.r, y2: y,
+        stroke: 'var(--line)', 'stroke-width': 1, opacity: 0.55
+      }));
+      var lab = svg('text', {
+        x: PAD.l - 8, y: y + 4, 'text-anchor': 'end',
+        fill: 'var(--text-dim)', 'font-size': 11
+      });
+      lab.textContent = formatGspShort(v);
+      root.appendChild(lab);
+    }
+
+    /* 横軸は最初と最後の日付だけ（間を詰め込むと読めない） */
+    [[xMin, 'start', PAD.l], [xMax, 'end', W - PAD.r]].forEach(function (t) {
+      var lab = svg('text', {
+        x: t[2], y: H - 8, 'text-anchor': t[1],
+        fill: 'var(--text-dim)', 'font-size': 11
+      });
+      var d = new Date(t[0]);
+      lab.textContent = (d.getMonth() + 1) + '/' + d.getDate();
+      root.appendChild(lab);
+    });
+
+    /* 折れ線とデータ点 */
+    for (var s2 = 0; s2 < series.length; s2++) {
+      var ser = series[s2];
+      var d = '';
+      for (var p = 0; p < ser.points.length; p++) {
+        var X = px(Date.parse(ser.points[p].date)), Y = py(ser.points[p].value);
+        d += (p ? 'L' : 'M') + X.toFixed(1) + ' ' + Y.toFixed(1);
+      }
+      if (ser.points.length > 1) {
+        root.appendChild(svg('path', {
+          d: d, fill: 'none', stroke: ser.color, 'stroke-width': 2,
+          'stroke-linecap': 'round', 'stroke-linejoin': 'round'
+        }));
+      }
+      for (var p2 = 0; p2 < ser.points.length; p2++) {
+        /* 点が重なっても分かるよう、背景色のリングを回す */
+        root.appendChild(svg('circle', {
+          cx: px(Date.parse(ser.points[p2].date)), cy: py(ser.points[p2].value),
+          r: 4, fill: ser.color, stroke: 'var(--surface)', 'stroke-width': 2
+        }));
+      }
+      if (direct) {
+        var last = ser.points[ser.points.length - 1];
+        var t = svg('text', {
+          x: px(Date.parse(last.date)) + 9, y: py(last.value) + 4,
+          fill: 'var(--text-dim)', 'font-size': 11, 'font-weight': 700
+        });
+        t.textContent = labelOf(ser.fighter);
+        root.appendChild(t);
+      }
+    }
+
+    /* ホバー/タップで日付を合わせ、その日の各系列の値を出す */
+    var cross = svg('line', {
+      y1: PAD.t, y2: H - PAD.b, stroke: 'var(--text-dim)',
+      'stroke-width': 1, 'stroke-dasharray': '3 3', opacity: 0
+    });
+    root.appendChild(cross);
+    var hit = svg('rect', {
+      x: PAD.l, y: PAD.t, width: Math.max(1, W - PAD.l - PAD.r),
+      height: H - PAD.t - PAD.b, fill: 'transparent'
+    });
+    root.appendChild(hit);
+    host.appendChild(root);
+
+    var tip = document.createElement('div');
+    tip.className = 'chart__tip';
+    tip.hidden = true;
+    host.appendChild(tip);
+
+    function moveTo(clientX) {
+      var box = root.getBoundingClientRect();
+      var x = clientX - box.left;
+      var t = xMin + (x - PAD.l) / (W - PAD.l - PAD.r) * (xMax - xMin);
+      /* 一番近い日付にスナップする */
+      var bestDate = null, bestD = Infinity;
+      for (var i = 0; i < series.length; i++)
+        for (var j = 0; j < series[i].points.length; j++) {
+          var dd = Math.abs(Date.parse(series[i].points[j].date) - t);
+          if (dd < bestD) { bestD = dd; bestDate = series[i].points[j].date; }
+        }
+      if (!bestDate) return;
+      var sx = px(Date.parse(bestDate));
+      cross.setAttribute('x1', sx); cross.setAttribute('x2', sx);
+      cross.setAttribute('opacity', 1);
+
+      var rows = ['<b>' + bestDate + '</b>'];
+      for (var s = 0; s < series.length; s++) {
+        var hitPt = null;
+        for (var k = 0; k < series[s].points.length; k++)
+          if (series[s].points[k].date === bestDate) { hitPt = series[s].points[k]; break; }
+        if (!hitPt) continue;
+        rows.push('<span class="chart__dot" style="background:' + series[s].color + '"></span>' +
+          series[s].fighter + ' ' + formatGsp(hitPt.value));
+      }
+      tip.innerHTML = rows.join('<br>');
+      tip.hidden = false;
+      /* 端で見切れないように寄せる */
+      var tw = tip.offsetWidth || 140;
+      tip.style.left = Math.min(Math.max(4, sx - tw / 2), W - tw - 4) + 'px';
+    }
+
+    root.addEventListener('pointermove', function (e) { moveTo(e.clientX); });
+    root.addEventListener('pointerdown', function (e) { moveTo(e.clientX); });
+    root.addEventListener('pointerleave', function () {
+      cross.setAttribute('opacity', 0); tip.hidden = true;
+    });
+  }
+
   /* ---------- 全体再描画 ---------- */
 
   function renderAll() {
@@ -591,6 +1010,8 @@
     renderPickerButton('statsMyChar');
     renderHistory();
     renderStats();
+    renderGspList();
+    renderGspChart();
     renderHeaderSync();
   }
 
@@ -625,6 +1046,69 @@
     $('memo').value = '';
     renderAll();
     showToast(battle.result === 'win' ? '勝利を記録しました！' : '敗北を記録しました');
+  }
+
+  /* 数値は「12,500,000」「1250万」のような入力も受け付ける */
+  function parseGspValue(raw) {
+    var t = String(raw).replace(/[,\s]/g, '').replace(/[０-９]/g, function (c) {
+      return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+    });
+    var m = t.match(/^(\d+(?:\.\d+)?)万$/);
+    if (m) return Math.round(parseFloat(m[1]) * 10000);
+    if (!/^\d+$/.test(t)) return NaN;
+    return parseInt(t, 10);
+  }
+
+  function handleGspSubmit(e) {
+    e.preventDefault();
+    var date = $('gspDate').value;
+    var fighter = picks.gspChar;
+    var value = parseGspValue($('gspValue').value);
+
+    if (!date) { showToast('日付を選択してください'); return; }
+    if (!fighter) { showToast('ファイターを選択してください'); return; }
+    if (isNaN(value) || value < 0) { showToast('世界戦闘力を数字で入力してください'); return; }
+
+    var id = gspId(date, fighter);
+    var rec = {
+      id: id, date: date, fighter: fighter, value: value,
+      deleted: false, updatedAt: new Date().toISOString()
+    };
+
+    /* 同じ日・同じキャラは上書きする */
+    var replaced = false;
+    for (var i = 0; i < gspRecords.length; i++) {
+      if (gspRecords[i].id === id) { gspRecords[i] = rec; replaced = true; break; }
+    }
+    if (!replaced) gspRecords.push(rec);
+    /* 過去に削除していた場合、墓標を取り除かないと同期で削除が復活する */
+    gspTombs = gspTombs.filter(function (g) { return g.id !== id; });
+
+    if (!saveGsp()) return;
+    syncSoon();
+    $('gspValue').value = '';
+    renderAll();
+    showToast(replaced ? '世界戦闘力を更新しました' : '世界戦闘力を記録しました');
+  }
+
+  function handleGspDeleteClick(e) {
+    var btn = e.target.closest('.gsp-row__delete');
+    if (!btn) return;
+    var id = btn.dataset.id;
+    var target = null;
+    for (var i = 0; i < gspRecords.length; i++) if (gspRecords[i].id === id) { target = gspRecords[i]; break; }
+    if (!target) return;
+    if (!window.confirm(target.date + ' の ' + target.fighter + ' の記録を削除しますか？')) return;
+
+    gspTombs.push({
+      id: target.id, date: target.date, fighter: target.fighter,
+      value: target.value, deleted: true, updatedAt: new Date().toISOString()
+    });
+    gspRecords = gspRecords.filter(function (g) { return g.id !== id; });
+    saveGsp();
+    syncSoon();
+    renderAll();
+    showToast('記録を削除しました');
   }
 
   function handleDeleteClick(e) {
@@ -720,6 +1204,10 @@
       panels[j].classList.toggle('is-active', panels[j].dataset.panel === name);
     }
     window.scrollTo(0, 0);
+
+    /* 非表示のパネルは幅が 0 になり、グラフが既定幅のまま描かれてしまう。
+       表示に切り替わった時点で実際の幅を測って描き直す。 */
+    if (name === 'stats') renderGspChart();
   }
 
   /* ---------- クラウド同期 UI ---------- */
@@ -899,8 +1387,46 @@
     $('syncOutBtn').addEventListener('click', handleSignOut);
 
     var st = SmashSync.init({
-      getLocal: getAllRecords,
-      setLocal: applyMerged,
+      collections: [
+        {
+          table: 'battles',
+          getLocal: getAllRecords,
+          setLocal: applyMerged,
+          toRow: function (b, userId) {
+            return {
+              user_id: userId, id: b.id, date: b.date,
+              my_char: b.myChar, opp_char: b.oppChar, result: b.result,
+              memo: typeof b.memo === 'string' ? b.memo : '',
+              deleted: !!b.deleted, updated_at: b.updatedAt || b.date
+            };
+          },
+          fromRow: function (r) {
+            return {
+              id: r.id, date: r.date, myChar: r.my_char, oppChar: r.opp_char,
+              result: r.result, memo: typeof r.memo === 'string' ? r.memo : '',
+              deleted: !!r.deleted, updatedAt: r.updated_at || r.date
+            };
+          }
+        },
+        {
+          table: 'gsp_records',
+          getLocal: getAllGsp,
+          setLocal: applyMergedGsp,
+          toRow: function (g, userId) {
+            return {
+              user_id: userId, id: g.id, date: g.date, fighter: g.fighter,
+              value: g.value, deleted: !!g.deleted, updated_at: g.updatedAt || g.date
+            };
+          },
+          fromRow: function (r) {
+            /* bigint は環境によって文字列で返るため数値に揃える */
+            return {
+              id: r.id, date: r.date, fighter: r.fighter, value: Number(r.value),
+              deleted: !!r.deleted, updatedAt: r.updated_at || r.date
+            };
+          }
+        }
+      ],
       onChange: function (next) {
         if (next.email) awaitingCode = false;
         renderAccount(next);
@@ -914,14 +1440,49 @@
   function init() {
     battles = loadBattles();
     tombstones = loadTombstones();
+    gspRecords = loadGsp(GSP_KEY).filter(isValidGsp);
+    gspTombs = loadGsp(GSP_TOMB_KEY);
     loadPrefs();
 
+    picks.gspChar = FIGHTER_BY_NAME[prefs.myChar] ? prefs.myChar : FIGHTERS[0].name;
     picks.myChar = FIGHTER_BY_NAME[prefs.myChar] ? prefs.myChar : FIGHTERS[0].name;
     picks.oppChar = FIGHTER_BY_NAME[prefs.oppChar] ? prefs.oppChar : FIGHTERS[0].name;
 
     $('battleForm').addEventListener('submit', handleSubmit);
     document.addEventListener('click', handleDeleteClick);
     $('statsSort').addEventListener('change', renderStats);
+    $('gspForm').addEventListener('submit', handleGspSubmit);
+    $('gspList').addEventListener('click', handleGspDeleteClick);
+
+    /* 凡例のチップで系列の表示/非表示を切り替える */
+    $('gspLegend').addEventListener('click', function (e) {
+      var chip = e.target.closest('.legend__chip');
+      if (!chip) return;
+      var f = chip.dataset.fighter;
+      if (gspShown[f]) delete gspShown[f];
+      else {
+        var on = Object.keys(gspShown).length;
+        if (!on) {
+          /* 未選択（既定表示）の状態から触ったときは、いまの既定を選択状態にしてから外す */
+          var cur = activeGspFighters();
+          for (var i = 0; i < cur.length; i++) gspShown[cur[i]] = true;
+          if (gspShown[f]) delete gspShown[f]; else gspShown[f] = true;
+        } else if (on >= GSP_MAX_SERIES) {
+          showToast('同時に表示できるのは ' + GSP_MAX_SERIES + ' 体までです');
+          return;
+        } else {
+          gspShown[f] = true;
+        }
+      }
+      renderGspChart();
+    });
+
+    /* 画面幅が変わるとグラフの座標が合わなくなるため描き直す */
+    var resizeTimer = null;
+    window.addEventListener('resize', function () {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(renderGspChart, 150);
+    });
     $('clearAllBtn').addEventListener('click', handleClearAll);
     $('exportBtn').addEventListener('click', handleExport);
     $('importBtn').addEventListener('click', function () { $('importFile').click(); });
@@ -945,6 +1506,11 @@
     }
 
     renderAll();
+
+    /* 日付は既定で今日にしておく（毎回選ぶ手間を省く） */
+    var now = new Date();
+    var p2 = function (n) { return n < 10 ? '0' + n : String(n); };
+    $('gspDate').value = now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate());
 
     initSync();
 

@@ -76,6 +76,35 @@
       <button type="submit" class="btn btn--primary">この対戦を保存する</button>
     </form>
 
+    <form id="gspForm" class="card form" autocomplete="off">
+      <h2 class="card__title">世界戦闘力を記録</h2>
+      <p class="form__note">1日1回、その日の値を記録します。同じ日・同じファイターを入力すると上書きされます。</p>
+
+      <div class="field">
+        <label class="field__label" for="gspDate">日付</label>
+        <input type="date" id="gspDate" class="input">
+      </div>
+
+      <div class="field">
+        <span class="field__label" id="gspCharLabel">ファイター</span>
+        <button type="button" class="picker-btn" id="gspChar" data-picker="fighter"
+                aria-labelledby="gspCharLabel" aria-haspopup="dialog"></button>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="gspValue">世界戦闘力</label>
+        <input type="text" id="gspValue" class="input" inputmode="numeric"
+               placeholder="12500000 または 1250万">
+      </div>
+
+      <button type="submit" class="btn btn--primary">世界戦闘力を保存する</button>
+    </form>
+
+    <div class="card" id="gspRecentCard" hidden>
+      <h2 class="card__title">最近の世界戦闘力</h2>
+      <ul class="gsp-list" id="gspList"></ul>
+    </div>
+
     <div class="card recent" id="recentCard" hidden>
       <h2 class="card__title">直近の対戦</h2>
       <ul class="match-list" id="recentList"></ul>
@@ -169,6 +198,15 @@
       </div>
       <ol class="rank-list" id="rankList"></ol>
       <p class="empty" id="statsEmpty">集計できる対戦記録がありません。</p>
+    </div>
+
+    <div class="card">
+      <div class="card__head">
+        <h2 class="card__title">世界戦闘力の推移</h2>
+      </div>
+      <div class="chart" id="gspChart"></div>
+      <div class="chart__legend" id="gspLegend"></div>
+      <p class="empty" id="gspEmpty">世界戦闘力の記録がありません。<br>「記録」タブから追加してください。</p>
     </div>
 
     <div class="card">

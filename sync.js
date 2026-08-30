@@ -13,47 +13,21 @@
 var SmashSync = (function () {
   'use strict';
 
-  var TABLE = 'battles';
   var PUSH_CHUNK = 200;
   var DEBOUNCE_MS = 1500;
 
   var client = null;
   var session = null;
-  var hooks = null;              /* { getLocal, setLocal, onChange } */
+  /* 同期対象のコレクション定義の配列。要素は
+     { table, getLocal, setLocal, toRow, fromRow }。
+     対戦記録と世界戦闘力のように、形の違うデータを同じ仕組みで扱う。 */
+  var collections = [];
+  var onChangeCb = null;
   var status = 'disabled';       /* disabled | signed-out | syncing | synced | offline | error */
   var detail = '';
   var syncing = false;
   var pendingSync = false;
   var debounceTimer = null;
-
-  /* ---------- レコード変換 ---------- */
-
-  function toRow(b, userId) {
-    return {
-      user_id: userId,
-      id: b.id,
-      date: b.date,
-      my_char: b.myChar,
-      opp_char: b.oppChar,
-      result: b.result,
-      memo: typeof b.memo === 'string' ? b.memo : '',
-      deleted: !!b.deleted,
-      updated_at: b.updatedAt || b.date
-    };
-  }
-
-  function fromRow(r) {
-    return {
-      id: r.id,
-      date: r.date,
-      myChar: r.my_char,
-      oppChar: r.opp_char,
-      result: r.result,
-      memo: typeof r.memo === 'string' ? r.memo : '',
-      deleted: !!r.deleted,
-      updatedAt: r.updated_at || r.date
-    };
-  }
 
   function stamp(b) {
     /* 旧データ（updatedAt を持たない）は date を初期値として扱う */
@@ -107,7 +81,7 @@ var SmashSync = (function () {
   function setStatus(next, msg) {
     status = next;
     detail = msg || '';
-    if (hooks && hooks.onChange) hooks.onChange(state());
+    if (onChangeCb) onChangeCb(state());
   }
 
   function state() {
@@ -128,16 +102,12 @@ var SmashSync = (function () {
     setStatus('syncing');
 
     var userId = session.user.id;
-    var local = hooks.getLocal();
 
-    return client.from(TABLE).select('*')
-      .then(function (res) {
-        if (res.error) throw res.error;
-        var remote = (res.data || []).map(fromRow);
-        var result = mergeRecords(local, remote);
-        hooks.setLocal(result.merged);
-        return pushAll(result.toPush, userId);
-      })
+    /* コレクションを順番に処理する。並列にすると、どれか 1 つが失敗した
+       ときの状態が分かりにくくなるため直列で回す。 */
+    return collections.reduce(function (p, coll) {
+      return p.then(function () { return syncCollection(coll, userId); });
+    }, Promise.resolve())
       .then(function () {
         setStatus('synced');
       })
@@ -152,15 +122,27 @@ var SmashSync = (function () {
       });
   }
 
-  function pushAll(rows, userId) {
+  function syncCollection(coll, userId) {
+    var local = coll.getLocal();
+    return client.from(coll.table).select('*')
+      .then(function (res) {
+        if (res.error) throw res.error;
+        var remote = (res.data || []).map(coll.fromRow);
+        var result = mergeRecords(local, remote);
+        coll.setLocal(result.merged);
+        return pushAll(result.toPush, userId, coll);
+      });
+  }
+
+  function pushAll(rows, userId, coll) {
     if (!rows.length) return Promise.resolve();
     var chunks = [];
     for (var i = 0; i < rows.length; i += PUSH_CHUNK) {
-      chunks.push(rows.slice(i, i + PUSH_CHUNK).map(function (b) { return toRow(b, userId); }));
+      chunks.push(rows.slice(i, i + PUSH_CHUNK).map(function (b) { return coll.toRow(b, userId); }));
     }
     return chunks.reduce(function (p, chunk) {
       return p.then(function () {
-        return client.from(TABLE).upsert(chunk, { onConflict: 'user_id,id' })
+        return client.from(coll.table).upsert(chunk, { onConflict: 'user_id,id' })
           .then(function (res) { if (res.error) throw res.error; });
       });
     }, Promise.resolve());
@@ -216,7 +198,8 @@ var SmashSync = (function () {
   /* ---------- 初期化 ---------- */
 
   function init(opts) {
-    hooks = opts;
+    collections = opts.collections || [];
+    onChangeCb = opts.onChange || null;
 
     var cfg = (typeof SUPABASE_CONFIG !== 'undefined') ? SUPABASE_CONFIG : null;
     if (!cfg || !cfg.url || !cfg.anonKey) {
