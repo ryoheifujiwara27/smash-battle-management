@@ -14,8 +14,8 @@
    設定手順は README.md の「クラウド同期のセットアップ」を参照。
    ========================================================= */
 var SUPABASE_CONFIG = {
-  url: '',
-  anonKey: ''
+  url: 'https://uixsgjoxwxdznmfknxic.supabase.co',
+  anonKey: 'sb_publishable_SMbzrKmbj3gYA1myzMth1g_3kwB_lle'
 };
 
 /* ローカルでの試用や、フォークして鍵を変えたい場合のための上書き口。
