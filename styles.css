@@ -596,6 +596,120 @@ input:focus-visible + .result-btn {
   line-height: 1.6;
 }
 
+/* ---------- 音声入力 ---------- */
+
+.mic-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mic-btn[hidden] { display: none; }
+.mic-btn svg { width: 15px; height: 15px; fill: currentColor; flex: none; }
+
+.mic-btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 59, 48, .3);
+}
+
+.voice__guide {
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  margin-bottom: 16px;
+}
+
+.voice__guide-lead {
+  margin: 0 0 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.voice__example {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.voice__example em { font-style: normal; color: var(--accent-2); }
+
+.voice__note {
+  margin: 10px 0 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.voice__state {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 18px 0 20px;
+}
+
+/* 聞き取り中であることを見て分かるようにする */
+.voice__wave {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 26px;
+}
+
+.voice__wave i {
+  width: 4px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--text-dim);
+}
+
+.voice.is-listening .voice__wave i {
+  background: var(--accent-2);
+  animation: voice-bar .9s ease-in-out infinite;
+}
+
+.voice.is-listening .voice__wave i:nth-child(2) { animation-delay: .12s; }
+.voice.is-listening .voice__wave i:nth-child(3) { animation-delay: .24s; }
+.voice.is-listening .voice__wave i:nth-child(4) { animation-delay: .36s; }
+.voice.is-listening .voice__wave i:nth-child(5) { animation-delay: .48s; }
+
+@keyframes voice-bar {
+  0%, 100% { height: 8px; }
+  50%      { height: 24px; }
+}
+
+.voice__status {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* 聞き取れた文字をそのまま見せる。誤認識の原因が利用者に分かるように。 */
+.voice__heard {
+  margin: 0;
+  min-height: 1.6em;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
 /* ---------- 世界戦闘力 ---------- */
 
 .form__note {

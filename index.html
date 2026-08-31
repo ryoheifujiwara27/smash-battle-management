@@ -44,7 +44,18 @@
     </div>
 
     <form id="battleForm" class="card form" autocomplete="off">
-      <h2 class="card__title">対戦を記録</h2>
+      <div class="card__head">
+        <h2 class="card__title">対戦を記録</h2>
+        <!-- 非対応ブラウザでは app.js がこのボタンを消す -->
+        <button type="button" class="mic-btn" id="voiceBtn" hidden aria-label="音声で入力">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z"/>
+            <path d="M18 11a6 6 0 0 1-12 0M12 17v4M9 21h6" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span>音声で入力</span>
+        </button>
+      </div>
 
       <div class="field">
         <span class="field__label" id="myCharLabel">自分のキャラ</span>
@@ -236,6 +247,35 @@
   </div>
 </div>
 
+<!-- 音声入力シート -->
+<div class="picker voice" id="voiceSheet" hidden>
+  <div class="picker__backdrop" data-voice-close></div>
+  <div class="picker__sheet" role="dialog" aria-modal="true" aria-labelledby="voiceTitle">
+    <div class="picker__head">
+      <h2 class="picker__title" id="voiceTitle">音声で記録</h2>
+      <button type="button" class="picker__close" data-voice-close aria-label="閉じる">×</button>
+    </div>
+
+    <!-- 何と言えばよいかを必ず示す。認識できる言い方は限られているため。 -->
+    <div class="voice__guide">
+      <p class="voice__guide-lead">次のように話してください</p>
+      <p class="voice__example">「マリオでリンクに<em>勝った</em>」</p>
+      <p class="voice__example">「クッパでピカチュウに<em>負けた</em>」</p>
+      <p class="voice__note">自分のキャラを省くと、いま選んでいるキャラのままになります。<br>
+        例:「リンクに負けた」</p>
+      <p class="voice__note">メモは音声では入りません。保存前に手で入力してください。</p>
+    </div>
+
+    <div class="voice__state">
+      <div class="voice__wave" id="voiceWave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      <p class="voice__status" id="voiceStatus" role="status" aria-live="polite">準備しています…</p>
+      <p class="voice__heard" id="voiceHeard"></p>
+    </div>
+
+    <button type="button" class="btn btn--ghost" id="voiceStopBtn">やめる</button>
+  </div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <!-- Supabase クライアント。読み込めない環境では sync.js が自動的に
@@ -243,6 +283,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js"></script>
 <script src="supabase-config.js"></script>
 <script src="sync.js"></script>
+<script src="voice.js"></script>
 <script src="characters.js"></script>
 <script src="app.js"></script>
 </body>
