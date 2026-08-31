@@ -1210,6 +1210,99 @@
     if (name === 'stats') renderGspChart();
   }
 
+  /* ---------- 音声入力 ---------- */
+
+  var voiceOpen = false;
+
+  function setVoiceStatus(text, listening) {
+    $('voiceStatus').textContent = text;
+    $('voiceSheet').classList.toggle('is-listening', !!listening);
+  }
+
+  function openVoice() {
+    voiceOpen = true;
+    $('voiceHeard').textContent = '';
+    setVoiceStatus('マイクの準備をしています…', false);
+    $('voiceSheet').hidden = false;
+    document.body.classList.add('is-locked');
+
+    SmashVoice.start({
+      onInterim: function (text) {
+        setVoiceStatus('聞き取り中…', true);
+        $('voiceHeard').textContent = text;
+      },
+      onError: function (kind) {
+        closeVoice();
+        if (kind === 'not-allowed' || kind === 'service-not-allowed') {
+          showToast('マイクの使用が許可されていません。ブラウザの設定をご確認ください');
+        } else if (kind === 'no-speech') {
+          showToast('聞き取れませんでした。もう一度お試しください');
+        } else if (kind === 'network') {
+          showToast('音声認識にはネット接続が必要です');
+        } else {
+          showToast('音声入力を開始できませんでした');
+        }
+      },
+      onEnd: function (finalText) {
+        if (!voiceOpen) return;   /* 利用者が「やめる」を押していた */
+        closeVoice();
+        applyVoice(finalText);
+      }
+    });
+  }
+
+  function closeVoice() {
+    voiceOpen = false;
+    SmashVoice.stop();
+    $('voiceSheet').hidden = true;
+    $('voiceSheet').classList.remove('is-listening');
+    document.body.classList.remove('is-locked');
+  }
+
+  /* 認識結果をフォームに埋める。自動保存はしない。
+     音声認識は必ず誤るため、目視で確認してから保存する前提。 */
+  function applyVoice(text) {
+    if (!text) { showToast('聞き取れませんでした。もう一度お試しください'); return; }
+
+    var names = [];
+    for (var i = 0; i < FIGHTERS.length; i++) names.push(FIGHTERS[i].name);
+    var g = SmashVoice.parse(text, names);
+
+    if (!g.oppChar && !g.myChar) {
+      showToast('「' + text + '」からキャラを聞き取れませんでした');
+      return;
+    }
+
+    var filled = [];
+    if (g.myChar) { picks.myChar = g.myChar; renderPickerButton('myChar'); filled.push('自分: ' + g.myChar); }
+    if (g.oppChar) { picks.oppChar = g.oppChar; renderPickerButton('oppChar'); filled.push('相手: ' + g.oppChar); }
+    if (g.result) {
+      $(g.result === 'win' ? 'resWin' : 'resLose').checked = true;
+      filled.push(g.result === 'win' ? 'WIN' : 'LOSE');
+    }
+
+    switchTab('record');
+    showToast(filled.join(' / ') + (g.result ? '' : '（勝敗は聞き取れませんでした）'));
+
+    /* 足りない項目に注意を向ける */
+    if (!g.result) $('resWin').focus();
+  }
+
+  function initVoice() {
+    var btn = $('voiceBtn');
+    if (!btn) return;
+    /* 非対応ブラウザ（Firefox など）では押せないボタンを置かない */
+    if (typeof SmashVoice === 'undefined' || !SmashVoice.isSupported()) {
+      btn.hidden = true;
+      return;
+    }
+    btn.hidden = false;
+    btn.addEventListener('click', openVoice);
+    $('voiceStopBtn').addEventListener('click', closeVoice);
+    var closers = $('voiceSheet').querySelectorAll('[data-voice-close]');
+    for (var i = 0; i < closers.length; i++) closers[i].addEventListener('click', closeVoice);
+  }
+
   /* ---------- クラウド同期 UI ---------- */
 
   var STATUS_LABEL = {
@@ -1497,6 +1590,7 @@
     var closers = $('picker').querySelectorAll('[data-close]');
     for (var c = 0; c < closers.length; c++) closers[c].addEventListener('click', closePicker);
     document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !$('voiceSheet').hidden) { closeVoice(); return; }
       if (e.key === 'Escape' && !$('picker').hidden) closePicker();
     });
 
@@ -1512,6 +1606,7 @@
     var p2 = function (n) { return n < 10 ? '0' + n : String(n); };
     $('gspDate').value = now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate());
 
+    initVoice();
     initSync();
 
     /* 画像アイコンが使える環境なら、判定後にアイコン付きで描き直す */
